@@ -1,8 +1,7 @@
-import time
 import triton_python_backend_utils as pb_utils
 import json
 import numpy as np
-from rec_postprocess import CTCLabelDecode, CTCLabelDecodeRobust, load_charset_from_yaml
+from rec_postprocess import CTCLabelDecodeRobust, load_charset_from_yaml
 import os
 
 

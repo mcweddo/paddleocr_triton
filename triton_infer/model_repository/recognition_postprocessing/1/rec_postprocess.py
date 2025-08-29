@@ -1,76 +1,149 @@
+import io
+import os
+import yaml
 import numpy as np
 
 
-class BaseRecLabelDecode:
-    def __init__(self, character_dict_path=None, use_space_char=True):
-        self.character_str = []
+def load_charset_from_yaml(yaml_path: str):
 
-        if character_dict_path is None:
-            self.character_str = "0123456789abcdefghijklmnopqrstuvwxyz"
-            dict_character = list(self.character_str)
+    if not os.path.isfile(yaml_path):
+        raise FileNotFoundError(f"inference.yml not found: {yaml_path}")
+
+    with io.open(yaml_path, "r", encoding="utf-8") as f:
+        y = yaml.safe_load(f)
+
+    pp = (y or {}).get("PostProcess", {})
+    chars = pp.get("character_dict")
+    if isinstance(chars, list) and len(chars) > 0:
+        return [str(c).strip("\n").strip("\r\n") for c in chars]
+
+    dict_path = pp.get("character_dict_path")
+    if dict_path and os.path.isfile(dict_path):
+        with io.open(dict_path, "r", encoding="utf-8") as f:
+            return [line.rstrip("\r\n") for line in f]
+
+    raise ValueError(
+        "No character_dict found in YAML and character_dict_path missing/not readable."
+    )
+
+class CTCLabelDecodeRobust:
+    def __init__(self, character_list, merge_repeats=True, use_space_char=True):
+        # character_list: list[str] without the CTC blank
+        self.character = character_list[:]  # length = K
+        self.merge_repeats = merge_repeats
+        self.use_space_char = use_space_char
+
+    def _normalize_logits_shape(self, logits, vocab_size=None):
+        """
+        Normalize logits to shape [T, V] (float32).
+
+        Accepts:
+          - [T, V]
+          - [V, T]
+          - [B, T, V] with B==1   (squeezed to [T, V])
+
+        Args:
+          logits: np.ndarray-like
+          vocab_size: Optional[int] = len(charset) + 1 (CTC blank)
+
+        Returns:
+          np.ndarray of shape [T, V], dtype float32
+        """
+
+        arr = np.asarray(logits)
+        # Squeeze a leading batch of 1 if present
+        if arr.ndim == 3:
+            if arr.shape[0] != 1:
+                raise ValueError(f"Expected batch size 1 for 3D logits, got shape {arr.shape}")
+            arr = arr[0]
+
+        if arr.ndim != 2:
+            raise ValueError(f"Expected 2D logits after squeeze, got shape {arr.shape}")
+
+        h, w = arr.shape  # unknown which is T or V yet
+
+        # 1) If we know vocab_size, prefer that to decide orientation.
+        if isinstance(vocab_size, (int, np.integer)) and vocab_size >= 2:
+            if w == vocab_size and h != vocab_size:
+                # already [T, V]
+                print("It is [T, V]")
+                pass
+            elif h == vocab_size and w != vocab_size:
+                # it's [V, T] -> transpose
+                arr = arr.T
+                h, w = arr.shape
+                print("It is [V,T]")
+            elif h == vocab_size and w == vocab_size:
+                # square & ambiguous; leave as-is (no transpose)
+                pass
+            else:
+                # Neither axis matches vocab_size → fall back to heuristic below.
+                if h > w:
+                    # larger dim likely vocab -> transpose to make second dim V
+                    arr = arr.T
+                    h, w = arr.shape
+                    print("It is [V,T]")
         else:
-            with open(character_dict_path, "rb") as fin:
-                lines = fin.readlines()
-                for line in lines:
-                    line = line.decode('utf-8').strip("\n").strip("\r\n")
-                    self.character_str.append(line)
-            if use_space_char:
-                self.character_str.append(" ")
-            dict_character = list(self.character_str)
-        self.character = self.add_special_char(dict_character )
-        self.dict = dict(enumerate(self.character))
+            # 2) Heuristic: vocab (V) is typically the larger axis; time (T) the smaller.
+            if h > w:
+                arr = arr.T
+                h, w = arr.shape
+                print("It is [V,T]")
 
+        # Final sanity: now interpret as [T, V]
+        T, V = arr.shape
+        if V < 2:
+            raise ValueError(f"Logits look wrong after normalization: [T,V]=[{T},{V}]")
+        return arr.astype(np.float32, copy=False)
 
-    def add_special_char(self, dict_character):
-        return dict_character
+    def decode(self, logits: np.ndarray):
+        V_expected = len(self.character) + 1  # blank at V-1
+        probs = self._normalize_logits_shape(logits, vocab_size=V_expected)  # [T,V]
+        T, V = probs.shape
+        blank_idx = V - 1
+        K = len(self.character)
 
-    def decode(self, text_index, text_prob=None, remove_duplicate=False):
-        """ convert text-index into text-label. """
-        result_list = []
-        ignored_tokens = self.get_ignored_tokens()
-        for batch_idx in range(len(text_index)):
-            char_list = []
-            conf_list = []
-            for idx in range(len(text_index[batch_idx])):
-                if text_index[batch_idx][idx] in ignored_tokens:
-                    continue
-                if remove_duplicate:
-                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]:
-                        continue
-                char_list.append(self.character[int(text_index[batch_idx][idx])])
-                if text_prob is not None:
-                    conf_list.append(text_prob[batch_idx][idx])
-                else:
-                    conf_list.append(1)
-            text = ''.join(char_list)
-            result_list.append((text, np.mean(conf_list) if conf_list else np.nan))
-        return result_list
+        if K != blank_idx:
+            # Not raising; it’s common when folks change models/dicts
+            # You can print/log here if you want visibility
+            pass
 
-    def get_ignored_tokens(self):
-        return [0]  # for ctc blank
+        # Greedy decode
+        prev = -1
+        text_chars = []
+        confs = []
 
+        # argmax along classes
+        idxs = probs.argmax(axis=1)  # [T]
+        maxp = probs.max(axis=1)     # [T]
 
-class CTCLabelDecode(BaseRecLabelDecode):
-    """ Convert between text-label and text-index """
+        for t, cls in enumerate(idxs.tolist()):
+            if cls == blank_idx:
+                prev = cls
+                continue
+            if self.merge_repeats and cls == prev:
+                prev = cls
+                continue
+            if 0 <= cls < K:
+                text_chars.append(self.character[cls])
+                confs.append(float(maxp[t]))
+            else:
+                prev = cls
+                continue
+            prev = cls
 
-    def __init__(self, character_dict_path=None, use_space_char=True):
-        super().__init__(character_dict_path)
+        if not text_chars:
+            return "", np.nan
+        if not confs:
+            score = np.nan
+        else:
+            score = float(np.median(np.asarray(confs, dtype=np.float32)))
+        return "".join(text_chars), score
 
-    def __call__(self, preds, label=None, *args, **kwargs):
-        if isinstance(preds, tuple) or isinstance(preds, list):
-            preds = preds[-1]
-
-        preds_idx = preds.argmax(axis=2)
-        preds_prob = preds.max(axis=2)
-        text = self.decode(preds_idx, preds_prob, remove_duplicate=True)
-
-        rec_texts, rec_scores = [], []
-        for res in text:
-            rec_texts.append(res[0])
-            rec_scores.append(res[1])
-        return rec_texts, rec_scores
-
-
-    def add_special_char(self, dict_character):
-        dict_character = ['blank'] + dict_character
-        return dict_character
+# === factory/helper ===
+def load_charset(dict_path: str):
+    # Typical Paddle dicts are one char per line; ensure UTF-8
+    with open(dict_path, "r", encoding="utf-8") as f:
+        chars = [line.rstrip("\n\r") for line in f]
+    # Optionally add space char if your training used it but the file doesn’t contain it
+    return chars

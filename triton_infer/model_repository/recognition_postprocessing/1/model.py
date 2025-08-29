@@ -26,9 +26,9 @@ class TritonPythonModel:
         dir_name = os.path.dirname(os.path.realpath(__file__))
         dict_path = os.path.join(dir_name, "inference.yml")
 
-        charset = load_charset_from_yaml(dict_path)
+        charset, blank_at_zero = load_charset_from_yaml(dict_path)
 
-        self.decoder = CTCLabelDecodeRobust(charset, merge_repeats=True)
+        self.decoder = CTCLabelDecodeRobust(charset, blank_at_zero=blank_at_zero, merge_repeats=True)
 
 
     def execute(self, requests):

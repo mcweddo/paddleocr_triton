@@ -1,128 +1,76 @@
-import io
-import os
-import yaml
 import numpy as np
 
 
-def load_charset_and_blank_from_yaml(yaml_path: str):
-    if not os.path.isfile(yaml_path):
-        raise FileNotFoundError(f"inference.yml not found: {yaml_path}")
-    with io.open(yaml_path, "r", encoding="utf-8") as f:
-        y = yaml.safe_load(f) or {}
-    pp = y.get("PostProcess", {}) or {}
+class BaseRecLabelDecode:
+    def __init__(self, character_dict_path=None, use_space_char=True):
+        self.character_str = []
 
-    chars = pp.get("character_dict")
-    if isinstance(chars, list) and chars:
-        charset = [str(c).strip("\n").strip("\r\n") for c in chars]
-    else:
-        dict_path = pp.get("character_dict_path")
-        if not dict_path or not os.path.isfile(dict_path):
-            raise ValueError("No character_dict in YAML and character_dict_path missing.")
-        with io.open(dict_path, "r", encoding="utf-8") as f:
-            return [line.rstrip("\r\n") for line in f]
-
-    blank_at_zero = False
-    if "blank_at_zero" in pp:
-        blank_at_zero = bool(pp["blank_at_zero"])
-    elif "ctc_blank" in pp:
-        blank_at_zero = int(pp["ctc_blank"]) == 0
-    elif "blank_index" in pp:
-        blank_at_zero = int(pp["blank_index"]) == 0
-
-    return charset, blank_at_zero
-
-
-class CTCLabelDecodeRobust:
-    def __init__(self, character_list, blank_at_zero, merge_repeats=True):
-        # character_list: list[str] without the CTC blank
-        self.character = character_list[:]  # length = K
-        self.merge_repeats = merge_repeats
-        self.blank_at_zero = bool(blank_at_zero)
-
-    def _normalize_logits_shape(self, logits, vocab_size=None):
-
-        arr = np.asarray(logits)
-        # Squeeze a leading batch of 1 if present
-        if arr.ndim == 3:
-            if arr.shape[0] != 1:
-                raise ValueError(f"Expected batch size 1 for 3D logits, got shape {arr.shape}")
-            arr = arr[0]
-
-        if arr.ndim != 2:
-            raise ValueError(f"Expected 2D logits after squeeze, got shape {arr.shape}")
-
-        h, w = arr.shape
-        if isinstance(vocab_size, (int, np.integer)) and vocab_size >= 2:
-            if w == vocab_size and h != vocab_size:
-                # already [T, V]
-                print("It is [T, V]")
-                pass
-            elif h == vocab_size and w != vocab_size:
-                # it's [V, T] -> transpose
-                arr = arr.T
-                h, w = arr.shape
-                print("It is [V,T]")
-            elif h == vocab_size and w == vocab_size:
-                # square & ambiguous; leave as-is (no transpose)
-                pass
-            else:
-                # Neither axis matches vocab_size → fall back to heuristic below.
-                if h > w:
-                    # larger dim likely vocab -> transpose to make second dim V
-                    arr = arr.T
-                    h, w = arr.shape
-                    print("It is [V,T]")
+        if character_dict_path is None:
+            self.character_str = "0123456789abcdefghijklmnopqrstuvwxyz"
+            dict_character = list(self.character_str)
         else:
-            # 2) Heuristic: vocab (V) is typically the larger axis; time (T) the smaller.
-            if h > w:
-                arr = arr.T
-                h, w = arr.shape
-                print("It is [V,T]")
+            with open(character_dict_path, "rb") as fin:
+                lines = fin.readlines()
+                for line in lines:
+                    line = line.decode('utf-8').strip("\n").strip("\r\n")
+                    self.character_str.append(line)
+            if use_space_char:
+                self.character_str.append(" ")
+            dict_character = list(self.character_str)
+        self.character = self.add_special_char(dict_character )
+        self.dict = dict(enumerate(self.character))
 
-        T, V = arr.shape
-        if V < 2:
-            raise ValueError(f"Logits look wrong after normalization: [T,V]=[{T},{V}]")
-        return arr.astype(np.float32, copy=False)
 
-    def decode(self, logits: np.ndarray):
-        V_expected = len(self.character) + 1  # blank at V-1
-        probs = self._normalize_logits_shape(logits, vocab_size=V_expected)  # [T,V]
-        T, V = probs.shape
-        blank_idx = 0 if self.blank_at_zero else (V - 1)
-        K = len(self.character)
+    def add_special_char(self, dict_character):
+        return dict_character
 
-        if K != blank_idx:
-            # Not raising; it’s common when folks change models/dicts
-            # You can print/log here if you want visibility
-            pass
+    def decode(self, text_index, text_prob=None, remove_duplicate=False):
+        """ convert text-index into text-label. """
+        result_list = []
+        ignored_tokens = self.get_ignored_tokens()
+        for batch_idx in range(len(text_index)):
+            char_list = []
+            conf_list = []
+            for idx in range(len(text_index[batch_idx])):
+                if text_index[batch_idx][idx] in ignored_tokens:
+                    continue
+                if remove_duplicate:
+                    if idx > 0 and text_index[batch_idx][idx - 1] == text_index[batch_idx][idx]:
+                        continue
+                char_list.append(self.character[int(text_index[batch_idx][idx])])
+                if text_prob is not None:
+                    conf_list.append(text_prob[batch_idx][idx])
+                else:
+                    conf_list.append(1)
+            text = ''.join(char_list)
+            result_list.append((text, np.mean(conf_list) if conf_list else np.nan))
+        return result_list
 
-        prev = -1
-        text_chars = []
-        confs = []
+    def get_ignored_tokens(self):
+        return [0]  # for ctc blank
 
-        idxs = probs.argmax(axis=1)  # [T]
-        maxp = probs.max(axis=1)     # [T]
 
-        for t, cls in enumerate(idxs.tolist()):
-            if cls == blank_idx:
-                prev = cls
-                continue
-            if self.merge_repeats and cls == prev:
-                prev = cls
-                continue
-            if 0 <= cls < K:
-                text_chars.append(self.character[cls])
-                confs.append(float(maxp[t]))
-            else:
-                prev = cls
-                continue
-            prev = cls
+class CTCLabelDecode(BaseRecLabelDecode):
+    """ Convert between text-label and text-index """
 
-        if not text_chars:
-            return "", np.nan
-        if not confs:
-            score = np.nan
-        else:
-            score = float(np.median(np.asarray(confs, dtype=np.float32)))
-        return "".join(text_chars), score
+    def __init__(self, character_dict_path=None, use_space_char=True):
+        super().__init__(character_dict_path)
 
+    def __call__(self, preds, label=None, *args, **kwargs):
+        if isinstance(preds, tuple) or isinstance(preds, list):
+            preds = preds[-1]
+
+        preds_idx = preds.argmax(axis=2)
+        preds_prob = preds.max(axis=2)
+        text = self.decode(preds_idx, preds_prob, remove_duplicate=True)
+
+        rec_texts, rec_scores = [], []
+        for res in text:
+            rec_texts.append(res[0])
+            rec_scores.append(res[1])
+        return rec_texts, rec_scores
+
+
+    def add_special_char(self, dict_character):
+        dict_character = ['blank'] + dict_character
+        return dict_character

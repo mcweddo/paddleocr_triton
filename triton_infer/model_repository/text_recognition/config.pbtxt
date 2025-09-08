@@ -10,32 +10,32 @@ input [
 ]
 output [
   {
-    name: "softmax_2.tmp_0"
+    name: "fetch_name_0"
     data_type: TYPE_FP32
-    dims: [ -1, -1, 97 ]
+    dims: [ -1, -1, 504 ]
   }
 ]
 #dynamic_batching { }
 
 instance_group [
     {
-      count: 10
+      count: 6
       kind: KIND_GPU
     }
 ]
 
-optimization {
-  execution_accelerators {
-    gpu_execution_accelerator: [{
-      name: "tensorrt"
-      parameters { key: "precision_mode" value: "FP16" }
-      parameters { key: "trt_engine_cache_enable" value: "1" }
-      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_recognition" }
-      parameters { key: "trt_cuda_graph_enable"   value: "0"}
-      parameters { key: "max_workspace_size_bytes" value: "4294967296"}
-    }]
-  }
-}
+#optimization {
+#  execution_accelerators {
+#    gpu_execution_accelerator: [{
+#      name: "tensorrt"
+#      parameters { key: "precision_mode" value: "FP16" }
+#      parameters { key: "trt_engine_cache_enable" value: "1" }
+#      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_recognition" }
+#      parameters { key: "trt_cuda_graph_enable"   value: "0"}
+#      parameters { key: "max_workspace_size_bytes" value: "4294967296"}
+#    }]
+#  }
+#}
 
 parameters { key: "execution_mode"        value: { string_value: "1" } }
 parameters { key: "intra_op_thread_count" value: { string_value: "0" } }

@@ -52,7 +52,7 @@ ensemble_scheduling {
         value: "preprocessed_image"
       }
       output_map {
-        key: "sigmoid_0.tmp_0"
+        key: "fetch_name_0"
         value: "detection_output"
       }
     },
@@ -88,7 +88,7 @@ ensemble_scheduling {
         value: "crop_imgs"
       }
       output_map {
-        key: "softmax_2.tmp_0"
+        key: "fetch_name_0"
         value: "recognition_output"
       }
     },

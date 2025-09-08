@@ -4,24 +4,24 @@ max_batch_size : 0
 
 instance_group [
     {
-      count: 10
+      count: 3
       kind: KIND_GPU
     }
 ]
 
-optimization {
-  execution_accelerators {
-    gpu_execution_accelerator: [{
-      name: "tensorrt"
-      parameters { key: "precision_mode" value: "FP16" }
-      parameters { key: "trt_engine_cache_enable" value: "1" }
-      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_detection" }
-      parameters { key: "trt_cuda_graph_enable"   value: "0" }
+#optimization {
+#  execution_accelerators {
+#    gpu_execution_accelerator: [{
+#      name: "tensorrt"
+#      parameters { key: "precision_mode" value: "FP16" }
+#      parameters { key: "trt_engine_cache_enable" value: "1" }
+#      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_detection" }
+#      parameters { key: "trt_cuda_graph_enable"   value: "0" }
       # Optional: raise if your model needs it (bytes)
-      parameters { key: "max_workspace_size_bytes" value: "4294967296" }
-    }]
-  }
-}
+#      parameters { key: "max_workspace_size_bytes" value: "4294967296" }
+#    }]
+#  }
+#}
 
 # Optional ORT session knobs (harmless with TRT EP enabled; keeps CPU side out of the way)
 parameters { key: "execution_mode"        value: { string_value: "1" } }

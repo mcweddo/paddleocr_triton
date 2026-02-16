@@ -12,6 +12,10 @@ class TritonPythonModel:
         self.det_postprocess = DBPostProcess(thresh=0.3, box_thresh=0.6, max_candidates=1000, unclip_ratio=1.5,use_dilation=False, score_mode="fast")
         self.rec_preprocessor = RecPreprocess()
 
+        # Must be <= text_recognition.max_batch_size for Triton batching to work reliably.
+        # Also prevents pathological pages from exploding VRAM/latency.
+        self.max_rec_crops = 256
+
         self.input_names = []
         for input in model_config['input']:
             self.input_names.append(input['name'])
@@ -44,6 +48,12 @@ class TritonPythonModel:
             shape_list = shape_list.as_numpy()
             
             dt_boxes = self.det_postprocess(preds, shape_list)[0]['points']
+            # Cap crops to match recognition batching limits
+            if dt_boxes is None:
+                dt_boxes = np.zeros((0, 4, 2), dtype=np.float32)
+            if dt_boxes.shape[0] > self.max_rec_crops:
+                dt_boxes = dt_boxes[: self.max_rec_crops]
+
             
             list_crop_img = self.rec_preprocessor.run(img_raw, dt_boxes)
 

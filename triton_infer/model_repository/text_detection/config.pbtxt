@@ -25,8 +25,8 @@ instance_group [
 
 # Optional ORT session knobs (harmless with TRT EP enabled; keeps CPU side out of the way)
 parameters { key: "execution_mode"        value: { string_value: "1" } }
-parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
-parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
+parameters { key: "intra_op_thread_count" value: { string_value: "1" } }
+parameters { key: "inter_op_thread_count" value: { string_value: "1" } }
 
 #This keeps idle VRAM from becoming large and spike
 parameters { key: "arena_extend_strategy" value: { string_value: "1" } }

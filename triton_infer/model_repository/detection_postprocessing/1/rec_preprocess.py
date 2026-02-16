@@ -2,52 +2,49 @@ import numpy as np
 import cv2
 import math
 
+
 class RecPreprocess:
     rec_image_shape = (3, 48, 320)
 
     def run(self, img_raw, dt_boxes):
         crop_coords = [crop.astype(int) for crop in dt_boxes]
-        return self.crop_imgs(img_raw, crop_coords)  # (num_boxes, 3, 48, 320)
+        list_crop_img = self.crop_imgs(img_raw, crop_coords)  # (numbox, 3, 32, 320)
+        return list_crop_img
 
     def crop_imgs(self, img_raw, crop_coords):
-        if not crop_coords:
-            c, h, w = self.rec_image_shape
-            return np.empty((0, c, h, w), dtype=np.float32)
-
+        list_crop_img = []
+        max_wh_ratio = 320 / 48
+        for crop_idx, crop_coord in enumerate(crop_coords):
+            crop_img = img_raw[crop_coord[0][1]:crop_coord[2][1], crop_coord[0][0]:crop_coord[1][0], ::-1].copy()
+            list_crop_img.append(crop_img)
+            h, w = crop_img.shape[0:2]
+            wh_ratio = w * 1.0 / h
+            max_wh_ratio = max(max_wh_ratio, wh_ratio)
         norm_img_batch = []
-        for crop_coord in crop_coords:
-            crop_img = img_raw[
-                crop_coord[0][1] : crop_coord[2][1],
-                crop_coord[0][0] : crop_coord[1][0],
-                ::-1,  # BGR->RGB
-            ].copy()
+        for crop_img in list_crop_img:
+            norm_img = self.resize_norm_img(crop_img, max_wh_ratio)
 
-            norm_img = self.resize_norm_img_fixed(crop_img)
-            norm_img_batch.append(norm_img[np.newaxis, :])
+            norm_img = norm_img[np.newaxis, :]
+            norm_img_batch.append(norm_img)
 
-        return np.concatenate(norm_img_batch, axis=0)
+        norm_img_batch = np.concatenate(norm_img_batch)
+        return norm_img_batch
 
-    def resize_norm_img_fixed(self, img):
-        """Resize with aspect ratio preserved, but ALWAYS pad/truncate to fixed W.
-
-        This guarantees every request produces (3,48,320), which is required for
-        Triton dynamic batching to actually combine multiple requests.
-        """
+    def resize_norm_img(self, img, max_wh_ratio):
         imgC, imgH, imgW = self.rec_image_shape
-        assert imgC == img.shape[2], f"Expected {imgC} channels, got {img.shape[2]}"
-
+        assert imgC == img.shape[2]
+        imgW = int((imgH * max_wh_ratio))
         h, w = img.shape[:2]
-        if h <= 0 or w <= 0:
-            return np.zeros((imgC, imgH, imgW), dtype=np.float32)
-
         ratio = w / float(h)
-        resized_w = int(math.ceil(imgH * ratio))
-        resized_w = max(1, min(resized_w, imgW))  # clamp into [1, imgW]
-
+        if math.ceil(imgH * ratio) > imgW:
+            resized_w = imgW
+        else:
+            resized_w = int(math.ceil(imgH * ratio))
         resized_image = cv2.resize(img, (resized_w, imgH))
-        resized_image = resized_image.astype(np.float32).transpose((2, 0, 1)) / 255.0
-        resized_image = (resized_image - 0.5) / 0.5
-
+        resized_image = resized_image.astype("float32")
+        resized_image = resized_image.transpose((2, 0, 1)) / 255
+        resized_image -= 0.5
+        resized_image /= 0.5
         padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
-        padding_im[:, :, :resized_w] = resized_image
+        padding_im[:, :, 0:resized_w] = resized_image
         return padding_im

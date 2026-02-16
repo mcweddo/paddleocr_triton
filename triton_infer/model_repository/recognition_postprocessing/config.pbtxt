@@ -1,6 +1,6 @@
 name: "recognition_postprocessing"
 backend: "python"
-max_batch_size: 256
+max_batch_size: 0
 input [
     {
         name: "recognition_postprocessing_input"

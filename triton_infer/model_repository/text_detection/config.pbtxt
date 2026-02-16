@@ -28,6 +28,11 @@ parameters { key: "execution_mode"        value: { string_value: "1" } }
 parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
 
+#This keeps idle VRAM from becoming large and spike
+parameters { key: "arena_extend_strategy" value: { string_value: "1" } }
+#optionally limit max VRAM allocation for model
+#parameters { key: "gpu_mem_limit"        value: { string_value: "8589934592" } }
+
 # (Optional) Warmup – uncomment and set a concrete H,W that your model accepts to kill first-hit cost
 # model_warmup: [
 #   {

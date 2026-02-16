@@ -53,8 +53,8 @@ class TritonPythonModel:
             # Cap crops to match recognition batching limits
             if dt_boxes is None:
                 dt_boxes = np.zeros((0, 4, 2), dtype=np.float32)
-            if dt_boxes.shape[0] > self.max_rec_crops:
-                dt_boxes = dt_boxes[: self.max_rec_crops]
+            # if dt_boxes.shape[0] > self.max_rec_crops:
+            #     dt_boxes = dt_boxes[: self.max_rec_crops]
 
             # Clip + filter degenerate boxes before cropping
             H, W = img_raw.shape[:2]

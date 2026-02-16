@@ -37,7 +37,7 @@ model_warmup [
   {
     name: "warmup_det_704x960"
     batch_size: 1
-    iterations: 1
+    count: 1
     inputs {
       key: "x"
       value { data_type: TYPE_FP32 dims: [ 3, 704, 960 ] random_data: true }
@@ -46,7 +46,7 @@ model_warmup [
   {
     name: "warmup_det_960x960"
     batch_size: 1
-    iterations: 1
+    count: 1
     inputs {
       key: "x"
       value { data_type: TYPE_FP32 dims: [ 3, 960, 960 ] random_data: true }

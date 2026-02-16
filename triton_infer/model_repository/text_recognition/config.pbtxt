@@ -44,7 +44,7 @@ parameters { key: "inter_op_thread_count" value: { string_value: "1" } }
 #This keeps idle VRAM from becoming large and spike
 parameters { key: "arena_extend_strategy" value: { string_value: "1" } }
 #optionally limit max VRAM allocation for model
-parameters { key: "gpu_mem_limit"        value: { string_value: "8589934592" } }
+parameters { key: "gpu_mem_limit"        value: { string_value: "9663676416" } }
 
 # (Optional) Warmup – pick a representative width your pipeline produces
 # model_warmup: [

@@ -72,8 +72,8 @@ class TritonPythonModel:
                 if ar > 50.0:
                     continue
                 clean.append(b)
-                if len(clean) >= self.max_rec_crops:
-                    break
+                # if len(clean) >= self.max_rec_crops:
+                #     break
             dt_boxes = np.array(clean, dtype=np.int32)
 
             list_crop_img = self.rec_preprocessor.run(img_raw, dt_boxes)

@@ -35,7 +35,7 @@ parameters { key: "arena_extend_strategy" value: { string_value: "1" } }
 parameters { key: "gpu_mem_limit"         value: { string_value: "3221225472" } }  # 3GB limit (conservative)
 
 # CUDA Execution Provider specific settings
-parameters { key: "cudnn_conv_algo_search" value: { string_value: "0" } }
+parameters { key: "cudnn_conv_algo_search" value: { string_value: "1" } }
 parameters { key: "do_copy_in_default_stream" value: { string_value: "1" } }
 
 parameters { key: "graph_optimization_level" value: { string_value: "2" } }

@@ -1,7 +1,6 @@
 # Triton Server Configuration for Memory-Constrained Deployment
 # Place this file in the same directory as model_repository or specify with --model-control-mode
 
-# Global rate limiter configuration
 rate_limiter {
   resource [
     {
@@ -11,29 +10,25 @@ rate_limiter {
   ]
 }
 
-# Backend configuration for ONNX Runtime with TensorRT
 backend_config {
   name: "onnxruntime"
   setting {
     key: "memory_limit_mb"
-    value: "12288"  # 12GB limit for ONNX/TensorRT combined
+    value: "12288"  #12GB limit for ONNX/TensorRT combined
   }
 }
 
-# Backend configuration for Python preprocessing/postprocessing
 backend_config {
   name: "python"
   setting {
     key: "shm-default-byte-size"
-    value: "1048576000"  # 1GB shared memory for Python models
+    value: "1048576000"  #1GB
   }
 }
 
-# Model control mode settings (for dynamic loading if needed)
 model_control_mode: MODE_EXPLICIT
 
-# Response cache configuration to reduce redundant processing
 response_cache {
   enable: true
-  byte_size: 268435456  # 256MB response cache
+  byte_size: 268435456  #256MB
 }

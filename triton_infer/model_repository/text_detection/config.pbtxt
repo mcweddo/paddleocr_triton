@@ -9,32 +9,49 @@ instance_group [
     }
 ]
 
-#optimization {
-#  execution_accelerators {
-#    gpu_execution_accelerator: [{
-#      name: "tensorrt"
-#      parameters { key: "precision_mode" value: "FP16" }
-#      parameters { key: "trt_engine_cache_enable" value: "1" }
-#      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_detection" }
-#      parameters { key: "trt_cuda_graph_enable"   value: "0" }
-      # Optional: raise if your model needs it (bytes)
-#      parameters { key: "max_workspace_size_bytes" value: "4294967296" }
-#    }]
-#  }
-#}
+optimization {
+  execution_accelerators {
+    gpu_execution_accelerator: [{
+      name: "tensorrt"
+      parameters { key: "precision_mode" value: "FP16" }
+      parameters { key: "trt_engine_cache_enable" value: "1" }
+      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_detection" }
+      parameters { key: "trt_cuda_graph_enable"   value: "0" }
+      parameters { key: "max_workspace_size_bytes" value: "4294967296" }
+      # Critical: Define optimization profiles for common shapes to minimize rebuilds
+      # Format: input_name,min_shape;opt_shape;max_shape
+      parameters { key: "trt_profile_min_shapes" value: "x:3x320x320" }
+      parameters { key: "trt_profile_opt_shapes" value: "x:3x960x960" }
+      parameters { key: "trt_profile_max_shapes" value: "x:3x1920x1920" }
+    }]
+  }
+}
 
-# Optional ORT session knobs (harmless with TRT EP enabled; keeps CPU side out of the way)
 parameters { key: "execution_mode"        value: { string_value: "1" } }
 parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
 
-# (Optional) Warmup – uncomment and set a concrete H,W that your model accepts to kill first-hit cost
-# model_warmup: [
-#   {
-#     name: "warm1"
-#     count: 1
-#     inputs: [
-#       { key: "x" data_type: TYPE_FP32 dims: [ 3, 960, 960 ] zero_data: true }
-#     ]
-#   }
-# ]
+# Warmup with multiple common shapes to pre-build TensorRT engines
+model_warmup: [
+  {
+    name: "warm_960"
+    count: 2
+    inputs: [
+      { key: "x" data_type: TYPE_FP32 dims: [ 3, 960, 960 ] zero_data: true }
+    ]
+  },
+  {
+    name: "warm_640"
+    count: 1
+    inputs: [
+      { key: "x" data_type: TYPE_FP32 dims: [ 3, 640, 640 ] zero_data: true }
+    ]
+  },
+  {
+    name: "warm_1280"
+    count: 1
+    inputs: [
+      { key: "x" data_type: TYPE_FP32 dims: [ 3, 1280, 1280 ] zero_data: true }
+    ]
+  }
+]

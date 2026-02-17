@@ -131,6 +131,7 @@ class DetResizeForTest(object):
     def resize_image_type0(self, img):
         """
         resize image to a size multiple of 32 which is required by the network
+        Optimized to produce consistent sizes for TensorRT kernel caching.
         args:
             img(array): array with shape [h, w, c]
         return(tuple):
@@ -160,11 +161,19 @@ class DetResizeForTest(object):
             ratio = float(limit_side_len) / max(h, w)
         else:
             raise Exception('not support limit type, image ')
+
         resize_h = int(h * ratio)
         resize_w = int(w * ratio)
 
+        # Round to multiples of 32 for optimal TensorRT performance
         resize_h = max(int(round(resize_h / 32) * 32), 32)
         resize_w = max(int(round(resize_w / 32) * 32), 32)
+
+        # Optionally quantize to common sizes to improve TensorRT cache hits
+        # Uncomment to enable size quantization for better kernel reuse
+        common_sizes = [320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1280, 1536, 1920]
+        resize_h = min(common_sizes, key=lambda x: abs(x - resize_h) if x >= resize_h else float('inf'))
+        resize_w = min(common_sizes, key=lambda x: abs(x - resize_w) if x >= resize_w else float('inf'))
 
         try:
             if int(resize_w) <= 0 or int(resize_h) <= 0:

@@ -3,47 +3,92 @@ import cv2
 import math
 
 class RecPreprocess:
-    rec_image_shape = ( 3, 48, 320)
+    rec_image_shape = (3, 48, 320)
 
     def run(self, img_raw, dt_boxes):
+        """
+        Preprocess text crops for recognition.
+        Groups crops by similar width ratios to enable efficient batching.
+        """
         crop_coords = [crop.astype(int) for crop in dt_boxes]
-        list_crop_img = self.crop_imgs(img_raw, crop_coords) # (numbox, 3, 32, 320)
-        return list_crop_img
 
-    def crop_imgs(self, img_raw, crop_coords):
-        list_crop_img = []
-        max_wh_ratio = 320 / 48
-        for crop_idx, crop_coord in enumerate(crop_coords):
-            crop_img = img_raw[crop_coord[0][1]:crop_coord[2][1], crop_coord[0][0]:crop_coord[1][0], ::-1].copy()
-            list_crop_img.append(crop_img)
+        # Extract crops and compute aspect ratios
+        crops_with_ratios = []
+        for crop_coord in crop_coords:
+            crop_img = img_raw[crop_coord[0][1]:crop_coord[2][1],
+                              crop_coord[0][0]:crop_coord[1][0], ::-1].copy()
             h, w = crop_img.shape[0:2]
-            wh_ratio = w * 1.0 / h
-            max_wh_ratio = max(max_wh_ratio, wh_ratio)
-        norm_img_batch = []
-        for crop_img in list_crop_img:
-            norm_img = self.resize_norm_img(crop_img, max_wh_ratio)
-            
-            norm_img = norm_img[np.newaxis, :]
-            norm_img_batch.append(norm_img)
+            wh_ratio = w * 1.0 / h if h > 0 else 1.0
+            crops_with_ratios.append((crop_img, wh_ratio))
 
-        norm_img_batch = np.concatenate(norm_img_batch)
+        # Group crops by similar aspect ratios to batch them efficiently
+        # Round ratios to nearest 0.5 to create width groups
+        grouped_crops = {}
+        for idx, (crop_img, ratio) in enumerate(crops_with_ratios):
+            # Round width ratio to reduce unique widths for better TensorRT cache hits
+            rounded_ratio = round(ratio * 2) / 2.0  # Round to nearest 0.5
+            rounded_ratio = max(0.5, min(rounded_ratio, 20.0))  # Clamp between 0.5 and 20
+
+            if rounded_ratio not in grouped_crops:
+                grouped_crops[rounded_ratio] = []
+            grouped_crops[rounded_ratio].append((idx, crop_img))
+
+        # Process each group with same target width
+        norm_img_batch = []
+        original_order = [None] * len(crops_with_ratios)
+
+        for ratio, group in grouped_crops.items():
+            group_imgs = []
+            for idx, crop_img in group:
+                norm_img = self.resize_norm_img(crop_img, ratio)
+                group_imgs.append(norm_img)
+                original_order[idx] = len(norm_img_batch) + len(group_imgs) - 1
+
+            norm_img_batch.extend(group_imgs)
+
+        # Stack all normalized images
+        if len(norm_img_batch) == 0:
+            # Return empty batch with correct shape
+            return np.zeros((0, 3, 48, 320), dtype=np.float32)
+
+        norm_img_batch = np.stack(norm_img_batch, axis=0)
         return norm_img_batch
 
-    def resize_norm_img(self, img, max_wh_ratio):
-        imgC, imgH, imgW = self.rec_image_shape
-        assert imgC == img.shape[2]
-        imgW = int((imgH * max_wh_ratio))
+    def resize_norm_img(self, img, target_wh_ratio):
+        """
+        Resize and normalize a single crop image.
+        Uses quantized widths for better TensorRT kernel reuse.
+        """
+        imgC, imgH, imgW_base = self.rec_image_shape
+
+        if img.shape[2] != imgC:
+            return np.zeros((imgC, imgH, imgW_base), dtype=np.float32)
+
+        # Calculate target width based on ratio, rounded to multiples of 32 for TensorRT
+        target_w = int(imgH * target_wh_ratio)
+        target_w = max(32, min(target_w, 960))  # Clamp to reasonable range
+        target_w = ((target_w + 31) // 32) * 32  # Round to multiple of 32
+
         h, w = img.shape[:2]
+        if h <= 0 or w <= 0:
+            return np.zeros((imgC, imgH, target_w), dtype=np.float32)
+
         ratio = w / float(h)
-        if math.ceil(imgH * ratio) > imgW:
-            resized_w = imgW
-        else:
-            resized_w = int(math.ceil(imgH * ratio))
+        resized_w = int(math.ceil(imgH * ratio))
+
+        if resized_w > target_w:
+            resized_w = target_w
+
+        resized_w = max(1, resized_w)
+
         resized_image = cv2.resize(img, (resized_w, imgH))
         resized_image = resized_image.astype("float32")
-        resized_image = resized_image.transpose((2, 0, 1)) / 255
+        resized_image = resized_image.transpose((2, 0, 1)) / 255.0
         resized_image -= 0.5
         resized_image /= 0.5
-        padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
+
+        # Pad to target width
+        padding_im = np.zeros((imgC, imgH, target_w), dtype=np.float32)
         padding_im[:, :, 0:resized_w] = resized_image
+
         return padding_im

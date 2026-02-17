@@ -1,20 +1,6 @@
 name: "text_recognition"
 backend: "onnxruntime"
 max_batch_size : 64
-input [
-  {
-    name: "x"
-    data_type: TYPE_FP32
-    dims: [ 3, 48, -1 ]
-  }
-]
-output [
-  {
-    name: "fetch_name_0"
-    data_type: TYPE_FP32
-    dims: [ -1, 504 ]
-  }
-]
 
 # Enable dynamic batching to batch text crops together and reduce TensorRT kernel warmups
 dynamic_batching {
@@ -39,7 +25,8 @@ optimization {
       parameters { key: "trt_cuda_graph_enable"   value: "0"}
       # Reduced from 4GB to 1.5GB for memory-constrained deployment
       parameters { key: "max_workspace_size_bytes" value: "1610612736"}
-      # Optimization profiles for width dimension (batch handled by max_batch_size)
+      # Optimization profiles for width dimension
+      # With max_batch_size>0, batch is NOT in dims, so profile is 3D: CxHxW
       parameters { key: "trt_profile_min_shapes" value: "x:3x48x32" }
       parameters { key: "trt_profile_opt_shapes" value: "x:3x48x320" }
       parameters { key: "trt_profile_max_shapes" value: "x:3x48x960" }
@@ -47,9 +34,17 @@ optimization {
   }
 }
 
-parameters { key: "execution_mode"        value: { string_value: "1" } }
-parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
-parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
+# ONNX Runtime session parameters
+parameters { key: "execution_mode"        value: { string_value: "1" } }  # 1=Parallel execution
+
+# Thread counts: Set to 1 for GPU models since compute happens on GPU, not CPU
+# This reduces CPU overhead and memory usage
+parameters { key: "intra_op_thread_count" value: { string_value: "1" } }
+parameters { key: "inter_op_thread_count" value: { string_value: "1" } }
+
+# Memory management
+parameters { key: "arena_extend_strategy" value: { string_value: "1" } }  # 1=kSameAsRequested (grow as needed)
+parameters { key: "gpu_mem_limit"         value: { string_value: "4294967296" } }  # 4GB limit per model
 
 # Reduced warmup iterations to save memory during startup
 model_warmup [

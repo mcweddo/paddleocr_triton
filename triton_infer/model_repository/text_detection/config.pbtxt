@@ -25,35 +25,22 @@ instance_group [
     }
 ]
 
-# ONNX Runtime optimizations (CUDA Execution Provider - no TensorRT)
-# Using CUDA EP instead of TensorRT for simpler deployment and more predictable memory usage
-
-# ONNX Runtime session parameters
 parameters { key: "execution_mode"        value: { string_value: "1" } }  # 1=Parallel execution
 
-# Thread counts: Minimal for GPU inference
 parameters { key: "intra_op_thread_count" value: { string_value: "1" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "1" } }
 
-# Memory management
-parameters { key: "arena_extend_strategy" value: { string_value: "1" } }  # kSameAsRequested (precise allocation)
+parameters { key: "arena_extend_strategy" value: { string_value: "1" } }
 parameters { key: "gpu_mem_limit"         value: { string_value: "4294967296" } }  # 4GB limit (conservative)
 
-# CUDA Execution Provider specific settings
-parameters { key: "cudnn_conv_algo_search" value: { string_value: "DEFAULT" } }  # Balance speed/memory
-parameters { key: "do_copy_in_default_stream" value: { string_value: "1" } }  # Better multi-instance perf
+parameters { key: "cudnn_conv_algo_search" value: { string_value: "DEFAULT" } }
+parameters { key: "do_copy_in_default_stream" value: { string_value: "1" } }
 
-# Graph optimization level (0=disable, 1=basic, 2=extended, 3=all)
-# Level 2 is optimal for CUDA EP without TensorRT overhead
 parameters { key: "graph_optimization_level" value: { string_value: "2" } }
-
-# Enable memory pattern optimization
 parameters { key: "enable_mem_pattern" value: { string_value: "1" } }
 
-# CPU memory arena (even GPU models use some CPU memory)
 parameters { key: "enable_cpu_mem_arena" value: { string_value: "1" } }
 
-# Reduced warmup iterations to save memory during startup
 model_warmup [
   {
     name: "warm_960"

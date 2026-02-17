@@ -34,7 +34,7 @@ parameters { key: "arena_extend_strategy" value: { string_value: "1" } }
 parameters { key: "gpu_mem_limit"         value: { string_value: "4294967296" } }  # 4GB limit (conservative)
 
 #Available options are 0 - EXHAUSTIVE (expensive exhaustive benchmarking using cudnnFindConvolutionForwardAlgorithmEx). This is also the default option, 1 - HEURISTIC (lightweight heuristic based search using cudnnGetConvolutionForwardAlgorithm_v7), 2 - DEFAULT (default algorithm using CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM)
-parameters { key: "cudnn_conv_algo_search" value: { string_value: "2" } }
+parameters { key: "cudnn_conv_algo_search" value: { string_value: "0" } }
 parameters { key: "do_copy_in_default_stream" value: { string_value: "1" } }
 
 parameters { key: "graph_optimization_level" value: { string_value: "2" } }

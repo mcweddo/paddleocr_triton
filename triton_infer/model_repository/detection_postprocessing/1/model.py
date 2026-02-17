@@ -24,6 +24,7 @@ class TritonPythonModel:
             self.output_dtype.append(dtype)
 
         self.rec_image_shape = (3, 48, 320)
+        self.max_crops = 200
 
     def execute(self, requests):
         st=time.time()
@@ -42,18 +43,23 @@ class TritonPythonModel:
             preds = det_output.as_numpy()
             img_raw = np.squeeze(ori_img.as_numpy(), axis=0)
             shape_list = shape_list.as_numpy()
-            
+
             dt_boxes = self.det_postprocess(preds, shape_list)[0]['points']
-            
+
+            # Limit number of crops to max batch size
+            if len(dt_boxes) > self.max_crops:
+                print(f"Warning: Image has {len(dt_boxes)} text regions, limiting to {self.max_crops}")
+                dt_boxes = dt_boxes[:self.max_crops]
+
             list_crop_img = self.rec_preprocessor.run(img_raw, dt_boxes)
 
-            out_tensor_0 = pb_utils.Tensor(self.output_names[0], dt_boxes.astype(self.output_dtype[0])) 
-            out_tensor_1 = pb_utils.Tensor(self.output_names[1], list_crop_img.astype(self.output_dtype[1])) 
+            out_tensor_0 = pb_utils.Tensor(self.output_names[0], dt_boxes.astype(self.output_dtype[0]))
+            out_tensor_1 = pb_utils.Tensor(self.output_names[1], list_crop_img.astype(self.output_dtype[1]))
 
             inference_response = pb_utils.InferenceResponse(
                 output_tensors=[out_tensor_0, out_tensor_1]
             )
-            
+
             responses.append(inference_response)
         return responses
 

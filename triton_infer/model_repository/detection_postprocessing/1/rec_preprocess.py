@@ -8,49 +8,32 @@ class RecPreprocess:
     def run(self, img_raw, dt_boxes):
         """
         Preprocess text crops for recognition.
-        Groups crops by similar width ratios to enable efficient batching.
+        All crops are padded to the same width for batching.
         """
         crop_coords = [crop.astype(int) for crop in dt_boxes]
 
+        if len(crop_coords) == 0:
+            return np.zeros((0, 3, 48, 320), dtype=np.float32)
+
         # Extract crops and compute aspect ratios
         crops_with_ratios = []
+        max_wh_ratio = 1.0
+
         for crop_coord in crop_coords:
             crop_img = img_raw[crop_coord[0][1]:crop_coord[2][1],
                               crop_coord[0][0]:crop_coord[1][0], ::-1].copy()
             h, w = crop_img.shape[0:2]
             wh_ratio = w * 1.0 / h if h > 0 else 1.0
-            crops_with_ratios.append((crop_img, wh_ratio))
+            max_wh_ratio = max(max_wh_ratio, wh_ratio)
+            crops_with_ratios.append(crop_img)
 
-        # Group crops by similar aspect ratios to batch them efficiently
-        # Round ratios to nearest 0.5 to create width groups
-        grouped_crops = {}
-        for idx, (crop_img, ratio) in enumerate(crops_with_ratios):
-            # Round width ratio to reduce unique widths for better TensorRT cache hits
-            rounded_ratio = round(ratio * 2) / 2.0  # Round to nearest 0.5
-            rounded_ratio = max(0.5, min(rounded_ratio, 20.0))  # Clamp between 0.5 and 20
-
-            if rounded_ratio not in grouped_crops:
-                grouped_crops[rounded_ratio] = []
-            grouped_crops[rounded_ratio].append((idx, crop_img))
-
-        # Process each group with same target width
+        # Process all crops with the same target width (based on max ratio)
         norm_img_batch = []
-        original_order = [None] * len(crops_with_ratios)
+        for crop_img in crops_with_ratios:
+            norm_img = self.resize_norm_img(crop_img, max_wh_ratio)
+            norm_img_batch.append(norm_img)
 
-        for ratio, group in grouped_crops.items():
-            group_imgs = []
-            for idx, crop_img in group:
-                norm_img = self.resize_norm_img(crop_img, ratio)
-                group_imgs.append(norm_img)
-                original_order[idx] = len(norm_img_batch) + len(group_imgs) - 1
-
-            norm_img_batch.extend(group_imgs)
-
-        # Stack all normalized images
-        if len(norm_img_batch) == 0:
-            # Return empty batch with correct shape
-            return np.zeros((0, 3, 48, 320), dtype=np.float32)
-
+        # Stack all normalized images (now all have same shape)
         norm_img_batch = np.stack(norm_img_batch, axis=0)
         return norm_img_batch
 

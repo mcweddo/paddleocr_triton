@@ -18,13 +18,13 @@ output [
 
 # Enable dynamic batching to batch text crops together and reduce TensorRT kernel warmups
 dynamic_batching {
-  preferred_batch_size: [ 4, 8, 16, 32, 64 ]
-  max_queue_delay_microseconds: 5000
+  preferred_batch_size: [ 8, 16, 32 ]
+  max_queue_delay_microseconds: 8000
 }
 
 instance_group [
     {
-      count: 4
+      count: 2
       kind: KIND_GPU
     }
 ]
@@ -37,7 +37,8 @@ optimization {
       parameters { key: "trt_engine_cache_enable" value: "1" }
       parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_recognition" }
       parameters { key: "trt_cuda_graph_enable"   value: "0"}
-      parameters { key: "max_workspace_size_bytes" value: "4294967296"}
+      # Reduced from 4GB to 1.5GB for memory-constrained deployment
+      parameters { key: "max_workspace_size_bytes" value: "1610612736"}
       # Optimization profiles for width dimension (batch handled by max_batch_size)
       parameters { key: "trt_profile_min_shapes" value: "x:3x48x32" }
       parameters { key: "trt_profile_opt_shapes" value: "x:3x48x320" }
@@ -50,16 +51,8 @@ parameters { key: "execution_mode"        value: { string_value: "1" } }
 parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
 
-# Warmup with multiple width dimensions and batch sizes
+# Reduced warmup iterations to save memory during startup
 model_warmup: [
-  {
-    name: "warm_batch8_w320"
-    batch_size: 8
-    count: 2
-    inputs: [
-      { key: "x" data_type: TYPE_FP32 dims: [ 3, 48, 320 ] zero_data: true }
-    ]
-  },
   {
     name: "warm_batch16_w320"
     batch_size: 16
@@ -69,8 +62,8 @@ model_warmup: [
     ]
   },
   {
-    name: "warm_batch4_w160"
-    batch_size: 4
+    name: "warm_batch8_w160"
+    batch_size: 8
     count: 1
     inputs: [
       { key: "x" data_type: TYPE_FP32 dims: [ 3, 48, 160 ] zero_data: true }

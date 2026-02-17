@@ -4,7 +4,7 @@ max_batch_size : 0
 
 instance_group [
     {
-      count: 3
+      count: 2
       kind: KIND_GPU
     }
 ]
@@ -31,7 +31,7 @@ parameters { key: "execution_mode"        value: { string_value: "1" } }
 parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
 
-# Warmup with multiple common shapes to pre-build TensorRT engines
+# Reduced warmup iterations to save memory during startup
 model_warmup: [
   {
     name: "warm_960"

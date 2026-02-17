@@ -17,11 +17,8 @@ output [
   }
 ]
 
-# Enable dynamic batching to batch text crops together and reduce TensorRT kernel warmups
-dynamic_batching {
-  preferred_batch_size: [ 8, 16, 32 ]
-  max_queue_delay_microseconds: 8000
-}
+# Dynamic batching disabled: model handles batching internally via 4D input [batch,C,H,W]
+# Batching happens in the preprocessing step which stacks multiple crops together
 
 instance_group [
     {

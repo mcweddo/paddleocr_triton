@@ -22,40 +22,37 @@ output [
 
 instance_group [
     {
-      count: 2
+      count: 4
       kind: KIND_GPU
     }
 ]
 
-optimization {
-  execution_accelerators {
-    gpu_execution_accelerator: [{
-      name: "tensorrt"
-      parameters { key: "precision_mode" value: "FP16" }
-      parameters { key: "trt_engine_cache_enable" value: "1" }
-      parameters { key: "trt_engine_cache_path"   value: "/workspace/models/_trt_cache/text_recognition" }
-      parameters { key: "trt_cuda_graph_enable"   value: "0"}
-      parameters { key: "max_workspace_size_bytes" value: "1610612736"}
-      # Profile for 4D input: [batch, channels, height, width]
-      # Batch and width are dynamic
-      parameters { key: "trt_profile_min_shapes" value: "x:1x3x48x32" }
-      parameters { key: "trt_profile_opt_shapes" value: "x:16x3x48x320" }
-      parameters { key: "trt_profile_max_shapes" value: "x:64x3x48x960" }
-    }]
-  }
-}
+# ONNX Runtime optimizations (CUDA Execution Provider - no TensorRT)
+# Using CUDA EP for simpler deployment and predictable memory usage
 
 # ONNX Runtime session parameters
 parameters { key: "execution_mode"        value: { string_value: "1" } }  # 1=Parallel execution
 
-# Thread counts: Set to 1 for GPU models since compute happens on GPU, not CPU
-# This reduces CPU overhead and memory usage
+# Thread counts: Minimal for GPU inference
 parameters { key: "intra_op_thread_count" value: { string_value: "1" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "1" } }
 
 # Memory management
-parameters { key: "arena_extend_strategy" value: { string_value: "1" } }  # 1=kSameAsRequested (grow as needed)
-parameters { key: "gpu_mem_limit"         value: { string_value: "4294967296" } }  # 4GB limit per model
+parameters { key: "arena_extend_strategy" value: { string_value: "1" } }  # kSameAsRequested (precise allocation)
+parameters { key: "gpu_mem_limit"         value: { string_value: "3221225472" } }  # 3GB limit (conservative)
+
+# CUDA Execution Provider specific settings
+parameters { key: "cudnn_conv_algo_search" value: { string_value: "DEFAULT" } }  # Balance speed/memory
+parameters { key: "do_copy_in_default_stream" value: { string_value: "1" } }  # Better multi-instance perf
+
+# Graph optimization level
+parameters { key: "graph_optimization_level" value: { string_value: "2" } }  # Extended optimizations
+
+# Enable memory pattern optimization
+parameters { key: "enable_mem_pattern" value: { string_value: "1" } }
+
+# CPU memory arena
+parameters { key: "enable_cpu_mem_arena" value: { string_value: "1" } }
 
 # Reduced warmup iterations to save memory during startup
 model_warmup [

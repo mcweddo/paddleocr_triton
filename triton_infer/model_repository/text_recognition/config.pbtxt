@@ -52,29 +52,44 @@ parameters { key: "intra_op_thread_count" value: { string_value: "0" } }
 parameters { key: "inter_op_thread_count" value: { string_value: "0" } }
 
 # Reduced warmup iterations to save memory during startup
-model_warmup: [
+model_warmup [
   {
     name: "warm_batch16_w320"
     batch_size: 16
     count: 1
-    inputs: [
-      { key: "x" data_type: TYPE_FP32 dims: [ 3, 48, 320 ] zero_data: true }
-    ]
+    inputs {
+      key: "x"
+      value: {
+        data_type: TYPE_FP32
+        dims: [ 3, 48, 320 ]
+        zero_data: true
+      }
+    }
   },
   {
     name: "warm_batch8_w160"
     batch_size: 8
     count: 1
-    inputs: [
-      { key: "x" data_type: TYPE_FP32 dims: [ 3, 48, 160 ] zero_data: true }
-    ]
+    inputs {
+      key: "x"
+      value: {
+        data_type: TYPE_FP32
+        dims: [ 3, 48, 160 ]
+        zero_data: true
+      }
+    }
   },
   {
     name: "warm_batch32_w480"
     batch_size: 32
     count: 1
-    inputs: [
-      { key: "x" data_type: TYPE_FP32 dims: [ 3, 48, 480 ] zero_data: true }
-    ]
+    inputs {
+      key: "x"
+      value: {
+        data_type: TYPE_FP32
+        dims: [ 3, 48, 480 ]
+        zero_data: true
+      }
+    }
   }
 ]
